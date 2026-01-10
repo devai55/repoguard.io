@@ -1,0 +1,5 @@
+django==3.2.15
+flask==2.2.5
+requests==2.28.0
+sqlalchemy==1.4.46
+numpy>=1.21.0

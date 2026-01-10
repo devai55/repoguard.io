@@ -1,0 +1,12 @@
+include README.md
+include LICENSE
+include CONTRIBUTING.md
+include SECURITY.md
+include CODE_OF_CONDUCT.md
+include requirements.txt
+include demo.py
+recursive-include test *.py
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude .pytest_cache
+global-exclude .mypy_cache

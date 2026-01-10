@@ -1,0 +1,7 @@
+# RepoGuard Requirements
+# Note: RepoGuard uses only Python standard library, so no external dependencies required
+
+# For development/testing (optional)
+pytest>=7.0.0
+black>=22.0.0
+flake8>=4.0.0

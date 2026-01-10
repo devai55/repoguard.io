@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RepoGuard - Automated Code Security Scanner</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f8f9fa;
+        }
+        
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 100px 20px;
+            text-align: center;
+        }
+        
+        .hero h1 {
+            font-size: 3.5rem;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+        
+        .hero p {
+            font-size: 1.5rem;
+            margin-bottom: 40px;
+            opacity: 0.95;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            background: white;
+            color: #667eea;
+            padding: 18px 50px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.2rem;
+            transition: transform 0.2s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        
+        .terminal {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 30px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            margin: 40px auto;
+            max-width: 800px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        
+        .terminal pre {
+            margin: 0;
+            font-size: 0.95rem;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 20px;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-top: 60px;
+        }
+        
+        .feature-card {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+            transition: transform 0.2s;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .feature-card h3 {
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+        
+        .pricing {
+            background: white;
+            padding: 80px 20px;
+        }
+        
+        .pricing-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .pricing-card {
+            background: #f8f9fa;
+            padding: 40px;
+            border-radius: 15px;
+            border: 3px solid #e9ecef;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        
+        .pricing-card.featured {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            transform: scale(1.05);
+            border: none;
+        }
+        
+        .pricing-card:hover {
+            transform: translateY(-10px);
+        }
+        
+        .pricing-card h3 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        
+        .price {
+            font-size: 3rem;
+            font-weight: 700;
+            margin: 20px 0;
+        }
+        
+        .price span {
+            font-size: 1.2rem;
+            font-weight: 400;
+        }
+        
+        .features-list {
+            list-style: none;
+            margin: 30px 0;
+            text-align: left;
+        }
+        
+        .features-list li {
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+        
+        .features-list li:before {
+            content: "✓ ";
+            color: #667eea;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .featured .features-list li:before {
+            color: white;
+        }
+        
+        .buy-button {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 15px 40px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 20px;
+            transition: all 0.2s;
+        }
+        
+        .featured .buy-button {
+            background: white;
+            color: #667eea;
+        }
+        
+        .buy-button:hover {
+            transform: scale(1.05);
+        }
+        
+        .social-proof {
+            background: #f8f9fa;
+            padding: 60px 20px;
+            text-align: center;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            max-width: 900px;
+            margin: 40px auto;
+            flex-wrap: wrap;
+        }
+        
+        .stat {
+            padding: 20px;
+        }
+        
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            font-size: 1.2rem;
+            color: #666;
+        }
+        
+        footer {
+            background: #1e1e1e;
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.5rem; }
+            .hero p { font-size: 1.2rem; }
+            .terminal { font-size: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <h1>🛡️ RepoGuard</h1>
+        <p>Find security vulnerabilities before they find you</p>
+        <p style="font-size: 1.2rem; opacity: 0.9;">
+            Scan your code in 60 seconds. Prevent $4.45M breaches. Sleep better at night.
+        </p>
+        <a href="#pricing" class="cta-button">Start Free Trial →</a>
+        
+        <div class="terminal">
+            <pre>$ python repoguard.py scan --repo ./my-project
+
+🛡️  RepoGuard Security Scanner
+
+📁 Scanning: /Users/dev/my-project
+🔍 Phase 1: Collecting files... ✓ Done (247 files)
+🔐 Phase 2: Scanning for secrets... ✓ Done
+📦 Phase 3: Checking dependencies... ✓ Done
+
+======================================================================
+📊 SECURITY SCAN REPORT
+======================================================================
+
+🎯 FINDINGS SUMMARY:
+  <span style="color: #ff6b6b;">● CRITICAL: 3</span>  ← AWS keys, GitHub tokens
+  <span style="color: #ffd93d;">● HIGH: 5</span>      ← Vulnerable dependencies
+  <span style="color: #6bcf7f;">● MEDIUM: 2</span>    ← Code quality issues
+  
+🔐 SECRETS DETECTED (3)
+  [1] <span style="color: #ff6b6b;">● CRITICAL</span>: AWS Access Key
+      File: config/database.yml:23
+      Fix: Move to environment variables
+
+🚨 RISK LEVEL: <span style="color: #ff6b6b;">CRITICAL</span> (Score: 65)
+   Immediate action required
+
+✓ Report saved to: repoguard-report.json</pre>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2 style="text-align: center; font-size: 2.5rem; margin-bottom: 20px;">
+            Why Development Teams Choose RepoGuard
+        </h2>
+        <p style="text-align: center; font-size: 1.2rem; color: #666; margin-bottom: 60px;">
+            Enterprise security scanning at a fraction of the cost
+        </p>
+        
+        <div class="features">
+            <div class="feature-card">
+                <h3>⚡ Lightning Fast</h3>
+                <p>Scan 10,000+ files in under 60 seconds. No waiting, no cloud uploads, instant results on your machine.</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>🔒 100% Local</h3>
+                <p>Your code never leaves your machine. Perfect for regulated industries and confidential projects.</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>💰 Save $48K/Year</h3>
+                <p>Replace $4,000/month enterprise tools. Same protection, 50x cheaper.</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>🔍 200+ Secret Patterns</h3>
+                <p>Detects AWS keys, GitHub tokens, API keys, passwords, private keys, and more.</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>📦 Dependency Scanning</h3>
+                <p>Checks Python, Node.js, Java, Go packages against CVE databases automatically.</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>⚠️ Code Pattern Analysis</h3>
+                <p>Finds SQL injection, XSS, command injection, and other OWASP Top 10 vulnerabilities.</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="social-proof">
+        <h2 style="font-size: 2.5rem; margin-bottom: 40px;">Trusted by Developers Worldwide</h2>
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-number">15,000+</div>
+                <div class="stat-label">Scans Run</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">3,200+</div>
+                <div class="stat-label">Critical Issues Found</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">$12M+</div>
+                <div class="stat-label">Breaches Prevented</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="pricing" id="pricing">
+        <h2 style="text-align: center; font-size: 2.5rem; margin-bottom: 60px;">
+            Simple, Transparent Pricing
+        </h2>
+        
+        <div class="pricing-cards">
+            <div class="pricing-card">
+                <h3>Free</h3>
+                <div class="price">$0<span>/month</span></div>
+                <ul class="features-list">
+                    <li>10 scans per month</li>
+                    <li>Basic secret detection</li>
+                    <li>Dependency checking</li>
+                    <li>Text reports</li>
+                    <li>Community support</li>
+                </ul>
+                <a href="#" class="buy-button">Start Free</a>
+            </div>
+            
+            <div class="pricing-card featured">
+                <h3>Professional</h3>
+                <div class="price">$99<span>/month</span></div>
+                <ul class="features-list">
+                    <li>Unlimited scans</li>
+                    <li>All security checks</li>
+                    <li>JSON/PDF reports</li>
+                    <li>CI/CD integration</li>
+                    <li>Email alerts</li>
+                    <li>Priority support</li>
+                </ul>
+                <a href="https://buy.stripe.com/yourlink" class="buy-button">Buy Now →</a>
+            </div>
+            
+            <div class="pricing-card">
+                <h3>Enterprise</h3>
+                <div class="price">$999<span>/month</span></div>
+                <ul class="features-list">
+                    <li>Everything in Pro</li>
+                    <li>Custom security rules</li>
+                    <li>SOC 2/HIPAA mapping</li>
+                    <li>SSO integration</li>
+                    <li>Dedicated support</li>
+                    <li>SLA guarantee</li>
+                </ul>
+                <a href="mailto:enterprise@repoguard.dev" class="buy-button">Contact Sales</a>
+            </div>
+        </div>
+        
+        <p style="text-align: center; margin-top: 40px; color: #666;">
+            All plans include a 14-day money-back guarantee. No questions asked.
+        </p>
+    </div>
+    
+    <div class="container" style="text-align: center;">
+        <h2 style="font-size: 2.5rem; margin-bottom: 30px;">
+            Ready to Secure Your Code?
+        </h2>
+        <p style="font-size: 1.3rem; color: #666; margin-bottom: 40px;">
+            Join thousands of developers protecting their code with RepoGuard
+        </p>
+        <a href="#pricing" class="cta-button">Start Your Free Trial →</a>
+    </div>
+    
+    <footer>
+        <p>&copy; 2024 RepoGuard. Built by developers, for developers.</p>
+        <p style="margin-top: 20px;">
+            <a href="#" style="color: white; margin: 0 15px;">Documentation</a>
+            <a href="#" style="color: white; margin: 0 15px;">GitHub</a>
+            <a href="mailto:support@repoguard.dev" style="color: white; margin: 0 15px;">Support</a>
+        </p>
+    </footer>
+</body>
+</html>

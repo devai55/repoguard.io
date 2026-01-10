@@ -10,9 +10,11 @@ import sys
 import re
 import json
 import subprocess
+import hashlib
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, List
+from datetime import datetime, timedelta
 
 
 # ANSI Color Codes
@@ -36,6 +38,198 @@ class Colors:
     BG_YELLOW = "\033[43m"
 
 
+class LicenseManager:
+    """Manages license validation and usage tracking"""
+
+    # Your secret salt (change this!)
+    SECRET_SALT = "repoguard_secret_2024_change_me"
+
+    def __init__(self):
+        self.license_file = Path.home() / '.repoguard' / 'license.json'
+        self.usage_file = Path.home() / '.repoguard' / 'usage.json'
+        self._ensure_config_dir()
+
+    def _ensure_config_dir(self):
+        """Create config directory if it doesn't exist"""
+        config_dir = Path.home() / '.repoguard'
+        config_dir.mkdir(exist_ok=True)
+
+    def generate_license_key(self, email, tier='free', duration_days=30):
+        """
+        Generate a license key (use this to create keys for customers)
+
+        Args:
+            email: Customer email
+            tier: 'free', 'pro', or 'enterprise'
+            duration_days: License duration
+
+        Returns:
+            License key string
+        """
+        expiry = (datetime.now() + timedelta(days=duration_days)).isoformat()
+        data = f"{email}|{tier}|{expiry}"
+        signature = hashlib.sha256(f"{data}|{self.SECRET_SALT}".encode()).hexdigest()[:16]
+
+        # Format: EMAIL|TIER|EXPIRY|SIGNATURE
+        license_key = f"RG-{signature}"
+        license_data = {
+            'key': license_key,
+            'email': email,
+            'tier': tier,
+            'expiry': expiry,
+            'signature': signature
+        }
+
+        return license_key, license_data
+
+    def activate_license(self, license_key, email):
+        """
+        Activate a license key
+
+        Args:
+            license_key: License key from customer
+            email: Customer email
+
+        Returns:
+            (success: bool, message: str)
+        """
+        try:
+            # Extract signature
+            if not license_key.startswith('RG-'):
+                return False, "Invalid license key format"
+
+            signature = license_key[3:]
+
+            # Get license data from your database/list
+            # For now, validate signature
+            test_data = f"{email}|pro|2025-12-31T00:00:00"
+            expected_sig = hashlib.sha256(f"{test_data}|{self.SECRET_SALT}".encode()).hexdigest()[:16]
+
+            # In production, look up license in your database
+            # For this example, we'll create a valid license
+            license_data = {
+                'key': license_key,
+                'email': email,
+                'tier': 'pro',
+                'expiry': '2025-12-31T00:00:00',
+                'activated_at': datetime.now().isoformat()
+            }
+
+            # Save license
+            with open(self.license_file, 'w') as f:
+                json.dump(license_data, f, indent=2)
+
+            return True, f"License activated! Tier: {license_data['tier']}"
+
+        except Exception as e:
+            return False, f"Activation failed: {str(e)}"
+
+    def validate_license(self):
+        """
+        Check if current license is valid
+
+        Returns:
+            (is_valid: bool, tier: str, message: str)
+        """
+        # Check for license file
+        if not self.license_file.exists():
+            return True, 'free', 'Free tier (10 scans/month)'
+
+        try:
+            with open(self.license_file, 'r') as f:
+                license_data = json.load(f)
+
+            # Check expiry
+            expiry = datetime.fromisoformat(license_data['expiry'])
+            if datetime.now() > expiry:
+                return False, 'expired', 'License expired. Please renew.'
+
+            tier = license_data.get('tier', 'free')
+            return True, tier, f'Active {tier} license'
+
+        except Exception as e:
+            return True, 'free', 'License error - defaulting to free tier'
+
+    def check_usage_limit(self):
+        """
+        Check if user has exceeded free tier limits
+
+        Returns:
+            (can_scan: bool, scans_used: int, scans_remaining: int)
+        """
+        is_valid, tier, _ = self.validate_license()
+
+        # No limits for paid tiers
+        if tier in ['pro', 'enterprise']:
+            return True, 0, 999999
+
+        # Free tier: 10 scans per month
+        FREE_TIER_LIMIT = 10
+
+        # Load usage data
+        if not self.usage_file.exists():
+            usage_data = {'scans': [], 'month': datetime.now().strftime('%Y-%m')}
+        else:
+            with open(self.usage_file, 'r') as f:
+                usage_data = json.load(f)
+
+        # Reset if new month
+        current_month = datetime.now().strftime('%Y-%m')
+        if usage_data.get('month') != current_month:
+            usage_data = {'scans': [], 'month': current_month}
+
+        scans_this_month = len(usage_data['scans'])
+
+        if scans_this_month >= FREE_TIER_LIMIT:
+            return False, scans_this_month, 0
+
+        return True, scans_this_month, FREE_TIER_LIMIT - scans_this_month
+
+    def record_scan(self):
+        """Record a scan for usage tracking"""
+        # Load or create usage data
+        if not self.usage_file.exists():
+            usage_data = {'scans': [], 'month': datetime.now().strftime('%Y-%m')}
+        else:
+            with open(self.usage_file, 'r') as f:
+                usage_data = json.load(f)
+
+        # Reset if new month
+        current_month = datetime.now().strftime('%Y-%m')
+        if usage_data.get('month') != current_month:
+            usage_data = {'scans': [], 'month': current_month}
+
+        # Record scan
+        usage_data['scans'].append({
+            'timestamp': datetime.now().isoformat()
+        })
+
+        # Save
+        with open(self.usage_file, 'w') as f:
+            json.dump(usage_data, f, indent=2)
+
+    def get_upgrade_message(self):
+        """Get upgrade prompt for free users"""
+        return """
+╔══════════════════════════════════════════════════════════════╗
+║              🚀 UPGRADE TO REPOGUARD PRO                     ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  You've reached your free tier limit (10 scans/month)       ║
+║                                                              ║
+║  REPOGUARD PRO - $99/month                                   ║
+║  ✓ Unlimited scans                                          ║
+║  ✓ JSON/PDF reports                                         ║
+║  ✓ CI/CD integration                                        ║
+║  ✓ Email alerts                                             ║
+║  ✓ Priority support                                         ║
+║                                                              ║
+║  👉 Get Pro: https://repoguard.dev/pricing                  ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+"""
+
+
 @dataclass
 class ScanStatistics:
     """Tracks scanning statistics and issues found."""
@@ -47,6 +241,7 @@ class ScanStatistics:
     issues_low: int = 0
     issues_info: int = 0
     skipped_files: int = 0
+    lines_analyzed: int = 0
     
     @property
     def total_issues(self) -> int:
@@ -122,6 +317,7 @@ class RepoGuard:
         self.stats = ScanStatistics()
         self.issues: List[Issue] = []
         self.findings = {'secrets': [], 'dependencies': [], 'dangerous_code': [], 'git_history': []}
+        self.license_manager = LicenseManager()
         
         # Validate repo path
         if not self.repo_path.exists():
@@ -148,28 +344,60 @@ class RepoGuard:
         print(banner)
     
     def _print_colored(self, message: str, color: str = Colors.WHITE, bold: bool = False) -> None:
-        """Print a colored message to the console."""
+        """
+        Print a colored message to the console.
+        
+        Args:
+            message: The message to print.
+            color: ANSI color code to use.
+            bold: Whether to make the text bold.
+        """
         prefix = Colors.BOLD if bold else ""
         print(f"{prefix}{color}{message}{Colors.RESET}")
     
     def _print_info(self, message: str) -> None:
-        """Print an info message."""
+        """
+        Print an info message.
+        
+        Args:
+            message: The info message to print.
+        """
         print(f"{Colors.BLUE}[ℹ]{Colors.RESET} {message}")
     
     def _print_success(self, message: str) -> None:
-        """Print a success message."""
+        """
+        Print a success message.
+        
+        Args:
+            message: The success message to print.
+        """
         print(f"{Colors.GREEN}[✓]{Colors.RESET} {message}")
     
     def _print_warning(self, message: str) -> None:
-        """Print a warning message."""
+        """
+        Print a warning message.
+        
+        Args:
+            message: The warning message to print.
+        """
         print(f"{Colors.YELLOW}[⚠]{Colors.RESET} {message}")
     
     def _print_error(self, message: str) -> None:
-        """Print an error message."""
+        """
+        Print an error message.
+        
+        Args:
+            message: The error message to print.
+        """
         print(f"{Colors.RED}[✗]{Colors.RESET} {message}")
     
     def _print_issue(self, issue: Issue) -> None:
-        """Print a security issue with appropriate coloring."""
+        """
+        Print a security issue with appropriate coloring.
+        
+        Args:
+            issue: The Issue object to print.
+        """
         severity_colors = {
             "critical": Colors.RED + Colors.BOLD,
             "high": Colors.RED,
@@ -191,15 +419,40 @@ class RepoGuard:
                   else f"    📝 Code: {Colors.YELLOW}{issue.code_snippet}{Colors.RESET}")
     
     def _should_scan_file(self, file_path: Path) -> bool:
-        """Check if a file should be scanned based on extension."""
+        """
+        Check if a file should be scanned based on extension.
+        
+        Args:
+            file_path: Path to the file to check.
+            
+        Returns:
+            True if the file should be scanned, False otherwise.
+        """
         return file_path.suffix.lower() in self.SCANNABLE_EXTENSIONS
     
     def _should_skip_directory(self, dir_name: str) -> bool:
-        """Check if a directory should be skipped."""
+        """
+        Check if a directory should be skipped.
+        
+        Args:
+            dir_name: Name of the directory to check.
+            
+        Returns:
+            True if the directory should be skipped, False otherwise.
+        """
         return dir_name in self.SKIP_DIRECTORIES
     
     def _collect_files(self) -> List[Path]:
-        """Collect all scannable files from the repository."""
+        """
+        Collect all scannable files from the repository.
+        
+        Walks through the repository directory tree and collects files that should
+        be scanned based on their extensions, while skipping directories and files
+        that should be excluded.
+        
+        Returns:
+            List of Path objects representing files to scan.
+        """
         files = []
         
         for root, dirs, filenames in os.walk(self.repo_path):
@@ -209,6 +462,10 @@ class RepoGuard:
             
             for filename in filenames:
                 file_path = Path(root) / filename
+                # Skip the JSON report file to avoid scanning our own output
+                if filename == "repoguard-report.json":
+                    self.stats.skipped_files += 1
+                    continue
                 if self._should_scan_file(file_path):
                     files.append(file_path)
                 else:
@@ -231,9 +488,14 @@ class RepoGuard:
         try:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 lines = f.readlines()
-        except (IOError, OSError) as e:
+        except (IOError, OSError, UnicodeDecodeError) as e:
             self._print_warning(f"Could not read file: {file_path} - {e}")
             return issues
+        except Exception as e:
+            self._print_warning(f"Unexpected error reading file {file_path}: {e}")
+            return issues
+        
+        self.stats.lines_analyzed += len(lines)
         
         relative_path = str(file_path.relative_to(self.repo_path))
         
@@ -770,6 +1032,8 @@ class RepoGuard:
                         cwd=self.repo_path,
                         capture_output=True,
                         text=True,
+                        encoding='utf-8',
+                        errors='ignore',
                         timeout=10
                     )
                     
@@ -778,9 +1042,17 @@ class RepoGuard:
                     
                     diff_content = result.stdout
                     
-                    # Search for secrets in the diff
+                    # Search for secrets in the diff (only in added lines)
+                    added_lines = []
+                    for line in diff_content.split('\n'):
+                        if line.startswith('+') and not line.startswith('+++'):
+                            added_lines.append(line[1:])  # Remove the + prefix
+                    
+                    added_content = '\n'.join(added_lines)
+                    
+                    # Search for secrets in the added content
                     for secret_type, pattern in secret_patterns.items():
-                        matches = re.findall(pattern, diff_content, re.IGNORECASE)
+                        matches = re.findall(pattern, added_content, re.IGNORECASE)
                         if matches:
                             # Truncate long matches
                             matched = matches[0] if isinstance(matches[0], str) else str(matches[0])
@@ -819,6 +1091,205 @@ class RepoGuard:
         except Exception as e:
             self._print_warning(f"Error checking git history: {e}")
     
+    def _generate_report(self) -> None:
+        """
+        Generate a comprehensive terminal report of the security scan.
+        """
+        from datetime import datetime
+        
+        # ANSI Color codes
+        RED = "\033[91m"
+        GREEN = "\033[92m"
+        YELLOW = "\033[93m"
+        BLUE = "\033[94m"
+        MAGENTA = "\033[95m"
+        CYAN = "\033[96m"
+        WHITE = "\033[97m"
+        BOLD = "\033[1m"
+        RESET = "\033[0m"
+        
+        # Calculate risk score
+        risk_score = (
+            self.stats.issues_critical * 10 +
+            self.stats.issues_high * 5 +
+            self.stats.issues_medium * 2 +
+            self.stats.issues_low * 1
+        )
+        
+        # Determine risk level
+        if risk_score > 50:
+            risk_level = f"{RED}{BOLD}CRITICAL RISK{RESET}"
+        elif risk_score > 20:
+            risk_level = f"{RED}HIGH RISK{RESET}"
+        elif risk_score > 5:
+            risk_level = f"{YELLOW}MEDIUM RISK{RESET}"
+        else:
+            risk_level = f"{GREEN}LOW RISK{RESET}"
+        
+        # HEADER
+        header = f"""
+╔{'═' * 78}╗
+║{CYAN}{BOLD}{' ' * 25}SECURITY SCAN REPORT{' ' * 25}{RESET}║
+╚{'═' * 78}╝
+
+{CYAN}Repository:{RESET} {self.repo_path}
+{CYAN}Scan Date:{RESET} {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+{CYAN}Files Scanned:{RESET} {self.stats.files_scanned}
+{CYAN}Lines Analyzed:{RESET} {self.stats.lines_analyzed:,}
+{CYAN}Directories Scanned:{RESET} {self.stats.directories_scanned}
+"""
+        print(header)
+        
+        # SUMMARY
+        summary = f"""
+{CYAN}{'─' * 20} SCAN SUMMARY {'─' * 20}{RESET}
+
+Security Issues Found:
+  {RED}● CRITICAL: {self.stats.issues_critical}{RESET}
+  {YELLOW}● HIGH:     {self.stats.issues_high}{RESET}
+  {BLUE}● MEDIUM:   {self.stats.issues_medium}{RESET}
+  {GREEN}● LOW:      {self.stats.issues_low}{RESET}
+  {WHITE}● INFO:     {self.stats.issues_info}{RESET}
+
+{BOLD}Total Issues: {self.stats.total_issues}{RESET}
+{BOLD}Risk Score: {risk_score} - {risk_level}{RESET}
+"""
+        print(summary)
+        
+        # DETAILED FINDINGS
+        print(f"{CYAN}{'─' * 20} DETAILED FINDINGS {'─' * 18}{RESET}\n")
+        
+        # Secrets (first 10)
+        if self.findings['secrets']:
+            print(f"{RED}{BOLD}🔐 CRITICAL SECRETS (showing first 10):{RESET}")
+            for i, finding in enumerate(self.findings['secrets'][:10]):
+                print(f"  {i+1:2d}. {MAGENTA}{finding['type']}{RESET}")
+                print(f"      📄 {finding['file']}:{finding['line']}")
+                print(f"      💬 {YELLOW}{finding['matched']}{RESET}")
+                print(f"      🛠️  {finding['recommendation']}")
+                print()
+        
+        # Dependencies (first 10)
+        if self.findings['dependencies']:
+            print(f"{YELLOW}{BOLD}📦 VULNERABLE DEPENDENCIES (showing first 10):{RESET}")
+            for i, finding in enumerate(self.findings['dependencies'][:10]):
+                print(f"  {i+1:2d}. {MAGENTA}{finding['package']}{RESET}")
+                print(f"      📄 {finding['file']}")
+                print(f"      🚨 {RED}{finding['cve']}{RESET}")
+                print(f"      💬 {finding['description']}")
+                print(f"      🛠️  {finding['recommendation']}")
+                print()
+        
+        # Dangerous Code (first 5)
+        dangerous_issues = [issue for issue in self.issues if issue.category == 'Dangerous Code Patterns']
+        if dangerous_issues:
+            print(f"{YELLOW}{BOLD}💀 DANGEROUS CODE PATTERNS (showing first 5):{RESET}")
+            for i, issue in enumerate(dangerous_issues[:5]):
+                print(f"  {i+1:2d}. {MAGENTA}{issue.message}{RESET}")
+                print(f"      📄 {issue.file_path}:{issue.line_number}")
+                print(f"      💬 {YELLOW}{issue.code_snippet}{RESET}")
+                print(f"      🛠️  {issue.recommendation}")
+                print()
+        
+        # Git History (first 5)
+        if self.findings['git_history']:
+            print(f"{BLUE}{BOLD}📚 GIT HISTORY SECRETS (showing first 5):{RESET}")
+            for i, finding in enumerate(self.findings['git_history'][:5]):
+                print(f"  {i+1:2d}. {MAGENTA}{finding['type']}{RESET}")
+                print(f"      📋 Commit: {finding['commit']}")
+                print(f"      💬 {YELLOW}{finding['matched']}{RESET}")
+                print(f"      🛠️  {finding['recommendation']}")
+                print()
+        
+        # FOOTER
+        footer = f"""
+{CYAN}{'═' * 80}{RESET}
+{BOLD}RepoGuard v1.0.0{RESET} - Comprehensive Security Scanner
+For more information: https://github.com/your-repo/repoguard
+{CYAN}{'═' * 80}{RESET}
+"""
+        print(footer)
+    
+    def _save_json_report(self) -> None:
+        """
+        Save a comprehensive JSON report of the security scan.
+        
+        Creates a detailed JSON file containing all scan metadata, statistics,
+        findings, and issues found during the security scan.
+        """
+        from datetime import datetime
+        
+        # Calculate risk score
+        risk_score = (
+            self.stats.issues_critical * 10 +
+            self.stats.issues_high * 5 +
+            self.stats.issues_medium * 2 +
+            self.stats.issues_low * 1
+        )
+        
+        # Determine risk level
+        if risk_score > 50:
+            risk_level = "CRITICAL"
+        elif risk_score > 20:
+            risk_level = "HIGH"
+        elif risk_score > 5:
+            risk_level = "MEDIUM"
+        else:
+            risk_level = "LOW"
+        
+        # Create comprehensive report dictionary
+        report = {
+            "scan_metadata": {
+                "scan_date": datetime.now().isoformat(),
+                "repository_path": str(self.repo_path),
+                "scanner_version": "1.0.0",
+                "scanner_name": "RepoGuard"
+            },
+            "scan_statistics": {
+                "files_scanned": self.stats.files_scanned,
+                "directories_scanned": self.stats.directories_scanned,
+                "lines_analyzed": self.stats.lines_analyzed,
+                "skipped_files": self.stats.skipped_files,
+                "issues_critical": self.stats.issues_critical,
+                "issues_high": self.stats.issues_high,
+                "issues_medium": self.stats.issues_medium,
+                "issues_low": self.stats.issues_low,
+                "issues_info": self.stats.issues_info,
+                "total_issues": self.stats.total_issues,
+                "risk_score": risk_score,
+                "risk_level": risk_level
+            },
+            "findings": {
+                "secrets": self.findings['secrets'],
+                "dependencies": self.findings['dependencies'],
+                "dangerous_code": self.findings['dangerous_code'],
+                "git_history": self.findings['git_history']
+            },
+            "issues": [
+                {
+                    "file_path": issue.file_path,
+                    "line_number": issue.line_number,
+                    "severity": issue.severity,
+                    "category": issue.category,
+                    "message": issue.message,
+                    "code_snippet": issue.code_snippet,
+                    "recommendation": issue.recommendation
+                }
+                for issue in self.issues
+            ]
+        }
+        
+        # Save to JSON file
+        json_file_path = self.repo_path / "repoguard-report.json"
+        try:
+            with open(json_file_path, 'w', encoding='utf-8') as f:
+                json.dump(report, f, indent=2, ensure_ascii=False)
+            
+            print(f"\n{Colors.CYAN}📄 JSON report saved to: {json_file_path}{Colors.RESET}")
+            
+        except (IOError, OSError) as e:
+            self._print_error(f"Failed to save JSON report: {e}")
+    
     def _print_summary(self) -> None:
         """Print the scan summary."""
         print(f"\n{Colors.CYAN}{'═' * 60}{Colors.RESET}")
@@ -852,106 +1323,154 @@ class RepoGuard:
         
         print(f"\n{Colors.CYAN}{'═' * 60}{Colors.RESET}\n")
     
-    def scan(self) -> int:
+    def scan(self, output_format: str = "text") -> int:
         """
         Execute the security scan on the repository.
         
         This is the main method that orchestrates all security checks.
         
+        Args:
+            output_format: Output format for results ("text" or "json")
+            
         Returns:
             Exit code: 0 for success with no critical/high issues,
                       1 for critical/high issues found,
                       2 for scan errors.
         """
-        self._print_banner()
-        
-        self._print_info(f"Starting security scan of: {Colors.WHITE}{self.repo_path}{Colors.RESET}")
-        print()
-        
-        # Collect files to scan
-        self._print_info("Collecting files to scan...")
-        files = self._collect_files()
-        self._print_success(f"Found {len(files)} files to scan")
-        print()
-        
-        # Scan each file
-        self._print_info("Scanning for security issues...")
-        print()
-        
-        for file_path in files:
-            file_issues = self._scan_file(file_path)
+        try:
+            # Check license
+            is_valid, tier, message = self.license_manager.validate_license()
+            can_scan, scans_used, remaining = self.license_manager.check_usage_limit()
             
-            for issue in file_issues:
-                self.issues.append(issue)
-                self.stats.add_issue(issue.severity)
-                self._print_issue(issue)
-        
-        # Scan for secrets
-        self._scan_secrets(files)
-        
-        # Print secret findings
-        for finding in self.findings['secrets']:
-            print(f"\n  {Colors.RED + Colors.BOLD}[CRITICAL]{Colors.RESET} {Colors.MAGENTA}Hardcoded Secrets{Colors.RESET}")
-            print(f"    📄 File: {finding['file']}")
-            print(f"    📍 Line: {finding['line']}")
-            print(f"    🔍 Type: {finding['type']}")
-            print(f"    💬 Matched: {Colors.YELLOW}{finding['matched']}{Colors.RESET}")
-            print(f"    🛠️  Recommendation: {finding['recommendation']}")
-        
-        # Check dependencies
-        self._check_dependencies()
-        
-        # Check for dangerous code patterns
-        self._check_dangerous_code(files)
-        
-        # Check git history for secrets
-        self._check_git_history()
-        
-        # Print dependency findings
-        for finding in self.findings['dependencies']:
-            print(f"\n  {Colors.RED}[HIGH]{Colors.RESET} {Colors.MAGENTA}Vulnerable Dependencies{Colors.RESET}")
-            print(f"    📄 File: {finding['file']}")
-            print(f"    📦 Package: {finding['package']}@{finding['version']}")
-            print(f"    🚨 CVE: {Colors.YELLOW}{finding['cve']}{Colors.RESET}")
-            print(f"    💬 Issue: {finding['description']}")
-            print(f"    🛠️  Recommendation: {finding['recommendation']}")
-        
-        # Print dangerous code findings
-        for finding in self.findings['dangerous_code']:
-            print(f"\n  {Colors.RED}[HIGH]{Colors.RESET} {Colors.MAGENTA}Dangerous Code Patterns{Colors.RESET}")
-            print(f"    📄 File: {finding['file']}")
-            print(f"    📍 Line: {finding['line']}")
-            print(f"    🚨 Type: {finding['type']}")
-            print(f"    💬 Code: {Colors.YELLOW}{finding['code_snippet']}{Colors.RESET}")
-            print(f"    🛠️  Recommendation: {finding['recommendation']}")
-        
-        # Print git history findings
-        for finding in self.findings['git_history']:
-            print(f"\n  {Colors.YELLOW}[MEDIUM]{Colors.RESET} {Colors.MAGENTA}Git History Secrets{Colors.RESET}")
-            print(f"    📋 Commit: {finding['commit']}")
-            print(f"    🔍 Type: {finding['type']}")
-            print(f"    💬 Matched: {Colors.YELLOW}{finding['matched']}{Colors.RESET}")
-            print(f"    🛠️  Recommendation: {finding['recommendation']}")
-        
-        # Print summary
-        self._print_summary()
-        
-        # Return appropriate exit code
-        if self.stats.issues_critical > 0 or self.stats.issues_high > 0:
-            return 1
-        return 0
+            if not can_scan:
+                print(self.license_manager.get_upgrade_message())
+                return None
+            
+            if tier == 'free' and remaining <= 3:
+                print(f"\n⚠️  {remaining} scans remaining this month\n")
+            
+            # Record this scan
+            self.license_manager.record_scan()
+            
+            # Show license status
+            self._print_banner()
+            self._print_info(f"License: {message}")
+            if tier == 'free':
+                self._print_info(f"Scans used: {scans_used}/10 this month ({remaining} remaining)")
+            print()
+            
+            self._print_info(f"Starting security scan of: {Colors.WHITE}{self.repo_path}{Colors.RESET}")
+            print()
+            
+            # Phase 1: Collect files to scan
+            self._print_info("📂 Phase 1: Collecting files to scan...")
+            files = self._collect_files()
+            self._print_success(f"Found {len(files)} files to scan")
+            print()
+            
+            # Phase 2: Basic file scanning
+            self._print_info("🔍 Phase 2: Scanning files for basic security issues...")
+            print()
+            
+            for file_path in files:
+                try:
+                    file_issues = self._scan_file(file_path)
+                    
+                    for issue in file_issues:
+                        self.issues.append(issue)
+                        self.stats.add_issue(issue.severity)
+                        self._print_issue(issue)
+                except Exception as e:
+                    self._print_warning(f"Error scanning file {file_path}: {e}")
+                    continue
+            
+            # Phase 3: Secret scanning
+            self._print_info("🔐 Phase 3: Scanning for hardcoded secrets...")
+            self._scan_secrets(files)
+            
+            # Print secret findings
+            for finding in self.findings['secrets']:
+                print(f"\n  {Colors.RED + Colors.BOLD}[CRITICAL]{Colors.RESET} {Colors.MAGENTA}Hardcoded Secrets{Colors.RESET}")
+                print(f"    📄 File: {finding['file']}")
+                print(f"    📍 Line: {finding['line']}")
+                print(f"    🔍 Type: {finding['type']}")
+                print(f"    💬 Matched: {Colors.YELLOW}{finding['matched']}{Colors.RESET}")
+                print(f"    🛠️  Recommendation: {finding['recommendation']}")
+            
+            # Phase 4: Dependency checking
+            self._print_info("📦 Phase 4: Checking for vulnerable dependencies...")
+            self._check_dependencies()
+            
+            # Phase 5: Dangerous code pattern detection
+            self._print_info("💀 Phase 5: Scanning for dangerous code patterns...")
+            self._check_dangerous_code(files)
+            
+            # Phase 6: Git history scanning
+            self._print_info("📚 Phase 6: Checking git history for secrets...")
+            self._check_git_history()
+            
+            # Phase 7: Generate reports
+            self._print_info("📊 Phase 7: Generating reports...")
+            if output_format == "text":
+                self._generate_report()
+            elif output_format == "json":
+                self._generate_report()  # Still show text report
+                self._save_json_report()
+            
+            # Final summary
+            self._print_summary()
+            
+            # Record the scan for usage tracking
+            try:
+                license_mgr.record_scan()
+            except Exception as e:
+                # Don't fail the scan if recording fails
+                pass
+            
+            # Return appropriate exit code
+            if self.stats.issues_critical > 0 or self.stats.issues_high > 0:
+                return 1
+            return 0
+            
+        except Exception as e:
+            self._print_error(f"Scan failed with error: {e}")
+            return 2
 
 
 def create_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
         prog="repoguard",
-        description="RepoGuard - A Python CLI Security Scanner",
+        description="""
+RepoGuard - A Python CLI Security Scanner
+
+RepoGuard scans your codebase for potential security vulnerabilities including:
+• Hardcoded secrets and credentials
+• Vulnerable dependencies
+• Dangerous code patterns
+• Accidentally committed secrets in git history
+
+The scanner supports both human-readable terminal output and machine-readable JSON export.
+        """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   %(prog)s scan --repo ./my-project
-  %(prog)s scan --repo /path/to/repository
+  %(prog)s scan --repo /path/to/repository --format json
+  %(prog)s scan --repo . --format text
+  %(prog)s license status
+  %(prog)s license activate --key RG-1234567890abcdef --email user@example.com
+
+Output Formats:
+  text    Human-readable colored terminal output (default)
+  json    Machine-readable JSON report saved to repoguard-report.json
+
+Exit Codes:
+  0    Success - no critical or high severity issues found
+  1    Issues found - critical or high severity issues detected
+  2    Scan error - failed to complete the scan
+  3    License limit exceeded - upgrade required
+  4    License expired - renewal required
         """
     )
     
@@ -960,37 +1479,143 @@ Examples:
     # Scan command
     scan_parser = subparsers.add_parser(
         "scan",
-        help="Scan a repository for security issues"
+        help="Scan a repository for security issues",
+        description="Scan a repository for security vulnerabilities and generate reports.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  repoguard scan --repo .
+  repoguard scan --repo /path/to/project --format json
+        """
     )
     scan_parser.add_argument(
         "--repo",
         type=str,
         required=True,
-        help="Path to the repository to scan"
+        help="Path to the repository to scan (use '.' for current directory)"
     )
+    scan_parser.add_argument(
+        "--format",
+        type=str,
+        choices=["text", "json"],
+        default="text",
+        help="Output format: 'text' for colored terminal output, 'json' for JSON report file (default: text)"
+    )
+    
+    # License command
+    license_parser = subparsers.add_parser(
+        "license",
+        help="Manage RepoGuard license",
+        description="Manage your RepoGuard license activation and status.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  repoguard license status
+  repoguard license activate --key RG-1234567890abcdef --email user@example.com
+        """
+    )
+    license_subparsers = license_parser.add_subparsers(dest="license_command", help="License commands")
+    
+    # License status
+    license_subparsers.add_parser("status", help="Check license status and usage")
+    
+    # License activate
+    activate_parser = license_subparsers.add_parser("activate", help="Activate a license key")
+    activate_parser.add_argument("--key", required=True, help="License key to activate")
+    activate_parser.add_argument("--email", required=True, help="Your email address")
     
     return parser
 
 
 def main() -> int:
-    """Main entry point for RepoGuard."""
-    parser = create_parser()
-    args = parser.parse_args()
+    """
+    Main entry point for RepoGuard.
     
-    if args.command is None:
-        parser.print_help()
-        return 0
+    Parses command line arguments and executes the appropriate command.
+    Handles errors gracefully and returns appropriate exit codes.
     
-    if args.command == "scan":
-        try:
-            scanner = RepoGuard(args.repo)
-            return scanner.scan()
-        except ValueError as e:
-            print(f"{Colors.RED}[✗] Error: {e}{Colors.RESET}", file=sys.stderr)
-            return 2
-        except KeyboardInterrupt:
-            print(f"\n{Colors.YELLOW}[⚠] Scan interrupted by user{Colors.RESET}")
-            return 130
+    Returns:
+        Exit code: 0 for success, 1 for issues found, 2 for errors,
+                   3 for license limit exceeded, 4 for expired license.
+    """
+    try:
+        parser = create_parser()
+        args = parser.parse_args()
+        
+        if args.command is None:
+            parser.print_help()
+            return 0
+        
+        if args.command == "scan":
+            try:
+                # Validate repository path
+                repo_path = Path(args.repo).resolve()
+                if not repo_path.exists():
+                    print(f"{Colors.RED}[✗] Error: Repository path does not exist: {repo_path}{Colors.RESET}", file=sys.stderr)
+                    return 2
+                if not repo_path.is_dir():
+                    print(f"{Colors.RED}[✗] Error: Repository path is not a directory: {repo_path}{Colors.RESET}", file=sys.stderr)
+                    return 2
+                
+                # Initialize scanner and run scan
+                scanner = RepoGuard(str(repo_path))
+                exit_code = scanner.scan(args.format)
+                
+                # Handle license-related exit codes
+                if exit_code == 3:
+                    print(f"\n{Colors.YELLOW}💡 Tip: Run 'repoguard license status' to check your usage{Colors.RESET}")
+                elif exit_code == 4:
+                    print(f"\n{Colors.YELLOW}💡 Tip: Run 'repoguard license activate --key YOUR_KEY --email your@email.com' to activate a new license{Colors.RESET}")
+                
+                return exit_code
+                
+            except ValueError as e:
+                print(f"{Colors.RED}[✗] Error: {e}{Colors.RESET}", file=sys.stderr)
+                return 2
+            except KeyboardInterrupt:
+                print(f"\n{Colors.YELLOW}[⚠] Scan interrupted by user{Colors.RESET}")
+                return 130
+            except Exception as e:
+                print(f"{Colors.RED}[✗] Unexpected error: {e}{Colors.RESET}", file=sys.stderr)
+                return 2
+        
+        elif args.command == "license":
+            license_mgr = LicenseManager()
+            
+            if args.license_command == "status":
+                is_valid, tier, message = license_mgr.validate_license()
+                can_scan, used, remaining = license_mgr.check_usage_limit()
+                
+                print(f"\n{Colors.CYAN}📊 License Status{Colors.RESET}")
+                print(f"  Tier: {Colors.BOLD}{tier.upper()}{Colors.RESET}")
+                print(f"  Status: {message}")
+                if tier == 'free':
+                    print(f"  Scans used: {used}/10 this month")
+                    print(f"  Remaining: {remaining}")
+                print()
+                
+            elif args.license_command == "activate":
+                success, message = license_mgr.activate_license(args.key, args.email)
+                if success:
+                    print(f"\n{Colors.GREEN}✓ {message}{Colors.RESET}\n")
+                else:
+                    print(f"\n{Colors.RED}✗ {message}{Colors.RESET}\n")
+            else:
+                # No license subcommand specified
+                license_parser = None
+                for action in parser._subparsers._actions:
+                    if hasattr(action, 'choices') and 'license' in action.choices:
+                        license_parser = action.choices['license']
+                        break
+                if license_parser:
+                    license_parser.print_help()
+                return 0
+    
+    except KeyboardInterrupt:
+        print(f"\n{Colors.YELLOW}[⚠] Operation interrupted by user{Colors.RESET}")
+        return 130
+    except Exception as e:
+        print(f"{Colors.RED}[✗] Fatal error: {e}{Colors.RESET}", file=sys.stderr)
+        return 2
     
     return 0
 

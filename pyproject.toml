@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "repoguard"
+name = "repoguard-cli"
 version = "1.0.0"
 description = "Automated Code Security Scanner - Find security vulnerabilities before they find you"
 readme = "README.md"

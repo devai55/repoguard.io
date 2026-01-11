@@ -42,7 +42,7 @@ jobs:
 
     - name: Upload Security Report
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: repoguard-security-report
         path: repoguard-report.json
@@ -180,7 +180,7 @@ jobs:
 
     - name: Upload Dependency Report
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: dependency-vulnerability-report
         path: dependency-report.json
